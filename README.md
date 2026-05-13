@@ -1,10 +1,14 @@
 # WebLLM Chat with Tool Calling
 
-A chat application that demonstrates both OpenAI-style function calling and structural tag approaches for tool use, with automatic fallback.
+A chat application that implements the OpenAI tool calling protocol with fallback to structural tag approach for tool use.
 
-This project combines the `simple-chat-ts` and `chat-with-tool-calling` examples from the WebLLM repository.
+This project combines the `simple-chat-ts` and `chat-with-tool-calling` examples from the WebLLM repository, implementing the OpenAI tool calling protocol with automatic fallback to structural tag generation.
 
 ## Features
+
+- **OpenAI Tool Calling Protocol** — Implements the standard OpenAI `tools` and `tool_choice` API
+  - Falls back to structural tag generation when OpenAI-style parsing fails
+  - Remembers the working mode per model for subsequent requests
 
 - **Multiple Tool Calling Modes**:
   - **OpenAI Style**: Uses `tools` and `tool_choice` fields (works with Hermes, Llama-3.1+, Qwen3 series)
