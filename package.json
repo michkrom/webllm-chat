@@ -1,0 +1,17 @@
+{
+  "name": "webllm-chat",
+  "version": "0.0.1",
+  "description": "Chat app with tool calling support - combines OpenAI style and structural tag approaches",
+  "scripts": {
+    "start": "parcel src/chat_tool_calling.html --port 8085",
+    "build": "parcel build src/chat_tool_calling.html"
+  },
+  "dependencies": {
+    "@mlc-ai/web-llm": "^0.2.0"
+  },
+  "devDependencies": {
+    "parcel": "^2.12.0"
+  },
+  "target": "browser",
+  "type": "module"
+}
