@@ -14,13 +14,48 @@ A chat application that demonstrates both OpenAI-style function calling and stru
 
 ## Getting Started
 
+### Prerequisites
+
+- Node.js (v18+ recommended)
+- npm or yarn
+
+### Installation
+
 ```bash
-cd examples/chat-with-tool-calling
 npm install
+```
+
+### Development
+
+```bash
 npm start
 ```
 
 Open http://localhost:8085 in your browser.
+
+### Build for Production
+
+```bash
+npm run build
+```
+
+## Task Automation (Optional)
+
+This project includes [Invoke](https://www.pyinvoke.org/) tasks for common operations. Install it first if you want to use them:
+
+```bash
+pip install invoke
+```
+
+Then you can use:
+
+```bash
+inv init        # Install dependencies
+inv build       # Build production bundle
+inv serve       # Serve built files (default port 8085)
+inv dev         # Start dev server with hot reload
+inv clean       # Remove build artifacts
+```
 
 ## Built-in Tools
 
@@ -75,3 +110,4 @@ The fallback mechanism works by:
 - `src/chat_tool_calling.html` - Main HTML with tool mode selector
 - `src/chat_tool_calling.ts` - Main TypeScript with ChatUI class and tool calling logic
 - `src/chat_tool_calling.css` - Styling
+- `tasks.py` - Invoke task definitions
