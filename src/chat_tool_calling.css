@@ -4,9 +4,9 @@
   flex-flow: column wrap;
   justify-content: space-between;
   width: 100%;
-  max-width: 867px;
+  max-width: 950px;
   margin: 25px auto;
-  height: 600px;
+  height: 620px;
   border: 2px solid #ddd;
   border-radius: 5px;
   background-color: #1f2027;
@@ -16,7 +16,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 15px;
+  padding: 8px 15px;
   border-bottom: 2px solid #444;
   background: #2a2b33;
   color: #ececec;
@@ -24,8 +24,14 @@
 
 .chat-header h1 {
   margin: 0;
-  font-size: 18px;
+  font-size: 16px;
   color: #ececec;
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 15px;
 }
 
 .tool-mode-selector {
@@ -35,7 +41,7 @@
 }
 
 .tool-mode-selector label {
-  font-size: 14px;
+  font-size: 13px;
   color: #aaa;
 }
 
@@ -43,34 +49,27 @@
   background-color: #40414f;
   color: white;
   border: none;
-  padding: 5px 10px;
+  padding: 4px 8px;
   border-radius: 3px;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .tool-mode-selector select:focus {
   outline: 2px solid #03a33e;
 }
 
-/* Used to remove tiny white lines in android devices; not sure if there is a better way */
-*,
-*::before,
-*::after {
-  box-sizing: content-box;
-}
-
 .chatui-select-wrapper {
   display: flex;
-  justify-content: center;
   background-color: #1f2027;
-  padding: 10px 0;
+  padding: 0;
 }
 
 #chatui-select {
-  width: 350px;
+  width: 280px;
   background-color: #1f2027;
   color: white;
   border: none;
+  font-size: 13px;
 }
 
 #chatui-select:focus {

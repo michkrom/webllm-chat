@@ -8,22 +8,23 @@
 </head>
 <body>
   <div class="chat-container">
-    <!-- Header with title and tool calling mode selector -->
+    <!-- Header with title and controls -->
     <div class="chat-header">
       <h1>WebLLM Chat with Tool Calling</h1>
-      <div class="tool-mode-selector">
-        <label for="tool-mode">Tool Calling Mode:</label>
-        <select id="tool-mode">
-          <option value="auto">Auto (Try OpenAI → Fallback to Structural)</option>
-          <option value="openai">OpenAI Style (Hermes/Llama-3.1+)</option>
-          <option value="structural">Structural Tag (Any model)</option>
-        </select>
+      <div class="header-controls">
+        <div class="tool-mode-selector">
+          <label for="tool-mode">Tool Calling Mode:</label>
+          <select id="tool-mode">
+            <option value="auto">Auto (Try OpenAI → Fallback to Structural)</option>
+            <option value="openai">OpenAI Style (Hermes/Llama-3.1+)</option>
+            <option value="structural">Structural Tag (Any model)</option>
+          </select>
+        </div>
+        <!-- Model selector -->
+        <div class="chatui-select-wrapper">
+          <select id="chatui-select"></select>
+        </div>
       </div>
-    </div>
-
-    <!-- Model selector -->
-    <div class="chatui-select-wrapper">
-      <select id="chatui-select"></select>
     </div>
 
     <!-- Chat messages display -->

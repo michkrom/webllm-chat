@@ -5,6 +5,9 @@ node_modules/
 dist/
 .parcel-cache/
 
+# Generated files in dist
+dist/index.html
+
 # IDE
 .vscode/
 *.swp
