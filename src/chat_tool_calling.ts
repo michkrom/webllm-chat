@@ -14,7 +14,7 @@ type ToolDefinition = {
 const tools: ToolDefinition[] = [
   {
     name: "get_location",
-    description: "Get the user's current geographic location (latitude, longitude, city)",
+    description: "Get the user's current geographic location (latitude, longitude)",
     schema: {
       type: "object",
       properties: {},
@@ -23,13 +23,13 @@ const tools: ToolDefinition[] = [
   },
   {
     name: "get_time",
-    description: "Get the current time in a given timezone",
+    description: "Get the current time in UTC or a specified timezone",
     schema: {
       type: "object",
       properties: {
         timezone: {
           type: "string",
-          description: "IANA timezone name, e.g. America/New_York",
+          description: "IANA timezone name (defaults to browser's local timezone if not specified)",
         },
       },
       required: [],
@@ -146,13 +146,33 @@ async function runTool(
         return;
       }
       navigator.geolocation.getCurrentPosition(
-        (position) => {
+        async (position) => {
+          const { latitude, longitude } = position.coords;
+          // Try to get reverse geocode for city/country info
+          let locationInfo = {};
+          try {
+            const response = await fetch(
+              `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=10&addressdetails=1`,
+              { headers: { "Accept-Language": "en" } }
+            );
+            const data = await response.json();
+            if (data?.address) {
+              locationInfo = {
+                city: data.address.city || data.address.town || data.address.village || "",
+                country: data.address.country || "",
+                display_name: data.display_name || "",
+              };
+            }
+          } catch (e) {
+            // Ignore geocoding errors, just return lat/lon
+          }
           resolve({
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
+            latitude,
+            longitude,
             accuracy: position.coords.accuracy,
             timestamp: new Date(position.timestamp).toISOString(),
-            note: "Browser geolocation API",
+            ...locationInfo,
+            note: "Browser geolocation API with reverse geocoding",
           });
         },
         (error) => {
