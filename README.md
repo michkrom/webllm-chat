@@ -2,6 +2,8 @@
 
 A chat application that demonstrates both OpenAI-style function calling and structural tag approaches for tool use, with automatic fallback.
 
+This project combines the `simple-chat-ts` and `chat-with-tool-calling` examples from the WebLLM repository.
+
 ## Features
 
 - **Multiple Tool Calling Modes**:
