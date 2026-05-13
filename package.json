@@ -7,10 +7,13 @@
     "build": "parcel build src/chat_tool_calling.html"
   },
   "dependencies": {
-    "@mlc-ai/web-llm": "^0.2.0"
+    "@mlc-ai/web-llm": "^0.2.83"
   },
   "devDependencies": {
-    "parcel": "^2.12.0"
+    "buffer": "^6.0.3",
+    "parcel": "^2.12.0",
+    "process": "^0.11.10",
+    "url": "^0.11.4"
   },
   "target": "browser",
   "type": "module"

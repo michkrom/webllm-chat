@@ -64,9 +64,14 @@ const appConfig: webllm.AppConfig = {
       m.model_id.includes("Hermes") ||
       m.model_id.includes("Llama-3.1") ||
       m.model_id.includes("Llama-3.2") ||
+      m.model_id.includes("Llama-3.3") ||
       m.model_id.includes("Qwen3") ||
+      m.model_id.includes("Qwen2.5") ||
       m.model_id.includes("Phi-4") ||
-      m.model_id.includes("gemma-2"),
+      m.model_id.includes("gemma-2") ||
+      m.model_id.includes("gemma-3") ||
+      m.model_id.includes("Mistral") ||
+      m.model_id.includes("DeepSeek"),
   ),
 };
 
