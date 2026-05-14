@@ -67,13 +67,13 @@ inv clean       # Remove build artifacts
 
 ### `get_location`
 Uses the browser's Geolocation API to get your current position:
-- Returns `latitude`, `longitude`, `accuracy`, `timestamp`
+- Returns `latitude`, `longitude`, `accuracy`, `timestamp`, plus city/country from reverse geocoding
 - Requires user permission to access location
 
 ### `get_time`
 Returns the current time using the browser's time:
 - Returns `local_time`, `iso_time`, `timezone`
-- Defaults to your browser's detected timezone
+- Defaults to your browser's detected timezone (can specify IANA timezone like "America/Los_Angeles")
 
 ## Tool Calling Modes Explained
 
