@@ -175,8 +175,14 @@ async function runTool(
     });
   }
   if (call.name === "get_time") {
-    const timezone = (call.arguments.timezone as string) ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+    let timezone = (call.arguments.timezone as string) ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
     const now = new Date();
+    // Fallback to UTC if timezone is invalid
+    try {
+      now.toLocaleDateString("en-US", { timeZone: timezone });
+    } catch {
+      timezone = "UTC";
+    }
     const date = now.toLocaleDateString("en-US", { 
       timeZone: timezone,
       weekday: "short",
