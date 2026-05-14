@@ -14,7 +14,7 @@ type ToolDefinition = {
 const tools: ToolDefinition[] = [
   {
     name: "get_location",
-    description: "Get the user's current geographic location (latitude, longitude)",
+    description: "Get the user's current city and country",
     schema: {
       type: "object",
       properties: {},
@@ -23,13 +23,13 @@ const tools: ToolDefinition[] = [
   },
   {
     name: "get_time",
-    description: "Get the current time in UTC or a specified timezone",
+    description: "Get the current time",
     schema: {
       type: "object",
       properties: {
         timezone: {
           type: "string",
-          description: "IANA timezone name (defaults to browser's local timezone if not specified)",
+          description: "IANA timezone name (defaults to browser's local timezone)",
         },
       },
       required: [],
