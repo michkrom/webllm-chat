@@ -148,8 +148,9 @@ async function runTool(
       navigator.geolocation.getCurrentPosition(
         async (position) => {
           const { latitude, longitude } = position.coords;
+          const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
           // Try to get reverse geocode for city/country info
-          let locationInfo = {};
+          let locationInfo: Record<string, unknown> = { timezone: browserTimezone };
           try {
             const response = await fetch(
               `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=10&addressdetails=1`,
@@ -158,6 +159,7 @@ async function runTool(
             const data = await response.json();
             if (data?.address) {
               locationInfo = {
+                ...locationInfo,
                 city: data.address.city || data.address.town || data.address.village || "",
                 country: data.address.country || "",
                 display_name: data.display_name || "",
