@@ -70,8 +70,8 @@ Uses the browser's Geolocation API to get your current city/country:
 - Returns `city`, `country`, `display_name`
 
 ### `get_time`
-Returns the current time:
-- Returns `time`
+Returns the current date and time:
+- Returns `date`, `time`
 - Defaults to your browser's detected timezone
 
 ## Tool Calling Modes Explained
