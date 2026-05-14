@@ -148,9 +148,7 @@ async function runTool(
       navigator.geolocation.getCurrentPosition(
         async (position) => {
           const { latitude, longitude } = position.coords;
-          const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-          // Try to get reverse geocode for city/country info
-          let locationInfo: Record<string, unknown> = { timezone: browserTimezone };
+          let locationInfo: Record<string, unknown> = {};
           try {
             const response = await fetch(
               `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=10&addressdetails=1`,
@@ -159,23 +157,15 @@ async function runTool(
             const data = await response.json();
             if (data?.address) {
               locationInfo = {
-                ...locationInfo,
                 city: data.address.city || data.address.town || data.address.village || "",
                 country: data.address.country || "",
                 display_name: data.display_name || "",
               };
             }
           } catch (e) {
-            // Ignore geocoding errors, just return lat/lon
+            // Ignore geocoding errors
           }
-          resolve({
-            latitude,
-            longitude,
-            accuracy: position.coords.accuracy,
-            timestamp: new Date(position.timestamp).toISOString(),
-            ...locationInfo,
-            note: "Browser geolocation API with reverse geocoding",
-          });
+          resolve(locationInfo);
         },
         (error) => {
           resolve({ error: error.message });
@@ -194,19 +184,7 @@ async function runTool(
       second: "2-digit",
       timeZoneName: "short"
     });
-    const dateString = now.toLocaleDateString("en-US", { 
-      timeZone: timezone,
-      weekday: "short",
-      year: "numeric",
-      month: "short",
-      day: "numeric"
-    });
-    return {
-      timezone,
-      iso_time: now.toISOString(),
-      local_time: `${dateString} ${timeString}`,
-      note: "Browser's local time",
-    };
+    return { time: timeString };
   }
   return { error: `Tool ${call.name} is not implemented.` };
 }
