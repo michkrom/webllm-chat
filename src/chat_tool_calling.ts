@@ -177,6 +177,13 @@ async function runTool(
   if (call.name === "get_time") {
     const timezone = (call.arguments.timezone as string) ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
     const now = new Date();
+    const dateString = now.toLocaleDateString("en-US", { 
+      timeZone: timezone,
+      weekday: "short",
+      year: "numeric",
+      month: "short",
+      day: "numeric"
+    });
     const timeString = now.toLocaleTimeString("en-US", { 
       timeZone: timezone,
       hour: "2-digit",
@@ -184,7 +191,7 @@ async function runTool(
       second: "2-digit",
       timeZoneName: "short"
     });
-    return { time: timeString };
+    return { time: `${dateString} ${timeString}` };
   }
   return { error: `Tool ${call.name} is not implemented.` };
 }
