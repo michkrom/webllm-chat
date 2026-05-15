@@ -139,6 +139,15 @@ function parseToolCallBlocks(
 async function runTool(
   call: { name: string; arguments: Record<string, unknown> },
 ): Promise<Record<string, unknown>> {
+  console.log(`Tool ${call.name} called with args:`, call.arguments);
+  const result = await executeTool(call);
+  console.log(`Tool ${call.name} result:`, result);
+  return result;
+}
+
+async function executeTool(
+  call: { name: string; arguments: Record<string, unknown> },
+): Promise<Record<string, unknown>> {
   if (call.name === "get_location") {
     return new Promise((resolve) => {
       if (!navigator.geolocation) {
@@ -175,23 +184,35 @@ async function runTool(
     });
   }
   if (call.name === "get_time") {
-    let timezone = (call.arguments.timezone as string) ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
     const now = new Date();
-    // Fallback to UTC if timezone is invalid
-    try {
-      now.toLocaleDateString("en-US", { timeZone: timezone });
-    } catch {
-      timezone = "UTC";
+    
+    // If timezone specified, use it; otherwise use local time directly
+    if (typeof call.arguments?.timezone === 'string' && call.arguments.timezone) {
+      const timezone = call.arguments.timezone;
+      const date = now.toLocaleDateString("en-US", { 
+        timeZone: timezone,
+        weekday: "short",
+        year: "numeric",
+        month: "short",
+        day: "numeric"
+      });
+      const time = now.toLocaleTimeString("en-US", { 
+        timeZone: timezone,
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit"
+      });
+      return { date, time };
     }
+    
+    // No timezone specified - use browser's local time
     const date = now.toLocaleDateString("en-US", { 
-      timeZone: timezone,
       weekday: "short",
       year: "numeric",
       month: "short",
       day: "numeric"
     });
     const time = now.toLocaleTimeString("en-US", { 
-      timeZone: timezone,
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit"
@@ -509,6 +530,7 @@ class ChatUI {
   }> {
     const systemPrompt =
       "You are a helpful assistant with access to tools. " +
+      "You MUST call the tools to get actual data - do NOT make up fake results. " +
       "Use the provided tools by emitting  tool_call blocks (one or more) when needed. " +
       'Each  tool_call should contain a JSON body {"name": "...", "arguments": {...}}. ' +
       "After receiving tool responses, provide a natural language answer incorporating the results. " +
@@ -558,7 +580,7 @@ class ChatUI {
     }
     messages.push({
       role: "user",
-      content: "Summarize the tool results in a natural response.",
+      content: "Using ONLY the tool results provided above, summarize the current time and location in a natural response.",
     });
     const finalReply = await this.engine.chat.completions.create({
       stream: false,
