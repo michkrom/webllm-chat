@@ -23,13 +23,13 @@ const tools: ToolDefinition[] = [
   },
   {
     name: "get_time",
-    description: "Get the current time",
+    description: "Get the current time. Use without timezone argument to get the user's local time. Only specify timezone if the user explicitly asks for time in a specific location.",
     schema: {
       type: "object",
       properties: {
         timezone: {
           type: "string",
-          description: "IANA timezone name (defaults to browser's local timezone)",
+          description: "IANA timezone name. Optional - only specify if user requests time in a timezone other than their local timezone",
         },
       },
       required: [],
@@ -48,7 +48,7 @@ const mcpStructuralTag = {
       content: { type: "json_schema", json_schema: tool.schema },
       end: "}\n<\/tool_call>",
     })),
-    at_least_one: true,
+    at_least_one: false,
     stop_after_first: false,
   },
 } as const;
@@ -101,32 +101,66 @@ function parseToolCallBlocks(
     throw new Error("Assistant reply did not contain a tool call.");
   }
   const calls: Array<{ name: string; arguments: Record<string, unknown> }> = [];
-  // Try structural tag format: ^<tool_call>JSON object\ntool>
-  const structuralRegex = /<tool_call>\s*({[\s\S]*?})\s*<\/tool_call>/g;
+  
+  // Helper to find matching closing brace for nested JSON
+  function findMatchingBrace(str: string, startIndex: number): number {
+    let depth = 0;
+    for (let i = startIndex; i < str.length; i++) {
+      if (str[i] === '{') depth++;
+      else if (str[i] === '}') {
+        depth--;
+        if (depth === 0) return i;
+      }
+    }
+    return -1;
+  }
+  
+  // Try structural tag format
+  const structuralRegex = />\s*\{/g;
   let match: RegExpExecArray | null;
   while ((match = structuralRegex.exec(content)) !== null) {
+    const startBrace = match.index + match[0].length - 1;
+    const endBrace = findMatchingBrace(content, startBrace);
+    if (endBrace === -1) continue;
+    
+    const jsonStr = content.substring(startBrace, endBrace + 1);
+    
+    // Verify this is a valid tool call block ending with </ (from <\/tool_call>)
+    const afterBrace = content.substring(endBrace + 1).trim();
+    if (!afterBrace.startsWith("<")) continue;
+    
     try {
-      const payload = JSON.parse(match[1]);
+      const payload = JSON.parse(jsonStr);
       if (typeof payload.name === "string" && payload.arguments !== undefined) {
         calls.push({ name: payload.name, arguments: payload.arguments });
       }
     } catch (e) {
-      console.warn("Failed to parse structural tool call:", match[1]);
+      console.warn("Failed to parse structural tool call:", jsonStr);
     }
   }
   if (calls.length > 0) {
     return calls;
   }
   // Fallback: Try Hermes function format: <function>JSON</function>
-  const hermesRegex = /<function>\s*({[\s\S]*?})\s*<\/function>/g;
+  const hermesRegex = /<function>\s*\{/g;
   while ((match = hermesRegex.exec(content)) !== null) {
+    const startBrace = match.index + match[0].length - 1;
+    const endBrace = findMatchingBrace(content, startBrace);
+    if (endBrace === -1) continue;
+    
+    const jsonStr = content.substring(startBrace, endBrace + 1);
+    
+    // Verify this is a valid function block ending with </
+    const afterBrace = content.substring(endBrace + 1).trim();
+    if (!afterBrace.startsWith("<")) continue;
+    
     try {
-      const payload = JSON.parse(match[1]);
+      const payload = JSON.parse(jsonStr);
       if (typeof payload.name === "string" && payload.parameters !== undefined) {
         calls.push({ name: payload.name, arguments: payload.parameters });
       }
     } catch (e) {
-      console.warn("Failed to parse Hermes tool call:", match[1]);
+      console.warn("Failed to parse Hermes tool call:", jsonStr);
     }
   }
   if (calls.length === 0) {
@@ -202,7 +236,12 @@ async function executeTool(
         minute: "2-digit",
         second: "2-digit"
       });
-      return { date, time };
+      return { 
+        success: true,
+        date, 
+        time,
+        timezone: timezone 
+      };
     }
     
     // No timezone specified - use browser's local time
@@ -217,7 +256,12 @@ async function executeTool(
       minute: "2-digit",
       second: "2-digit"
     });
-    return { date, time };
+    return { 
+      success: true,
+      date, 
+      time,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone 
+    };
   }
   return { error: `Tool ${call.name} is not implemented.` };
 }
@@ -231,14 +275,19 @@ class ChatUI {
   private uiChatInput: HTMLInputElement;
   private uiChatInfoLabel: HTMLLabelElement;
   private uiToolModeSelector: HTMLSelectElement;
+  private uiContextSizeSelector: HTMLSelectElement;
   private engine: webllm.MLCEngineInterface;
   private selectedModel: string;
+  private contextSize: number;
   private toolMode: ToolMode = "auto";
   private determinedMode: ToolMode | null = null; // Once determined, remember the working mode
   private chatLoaded = false;
   private requestInProgress = false;
   private chatHistory: webllm.ChatCompletionMessageParam[] = [];
   private chatRequestChain: Promise<void> = Promise.resolve();
+
+  // Available context size options (in tokens)
+  private static readonly CONTEXT_SIZE_OPTIONS = [4096, 8192, 16384, 32768, 65536, 131072];
 
   public static CreateAsync = async (engine: webllm.MLCEngineInterface) => {
     const chatUI = new ChatUI();
@@ -251,6 +300,11 @@ class ChatUI {
     chatUI.uiToolModeSelector = getElementAndCheck(
       "tool-mode",
     ) as HTMLSelectElement;
+    chatUI.uiContextSizeSelector = getElementAndCheck(
+      "context-size",
+    ) as HTMLSelectElement;
+    // Load saved settings from localStorage
+    chatUI.loadSettings();
     // Event handlers
     getElementAndCheck("chatui-reset-btn").onclick = () => chatUI.onReset();
     getElementAndCheck("chatui-send-btn").onclick = () => chatUI.onGenerate();
@@ -260,6 +314,11 @@ class ChatUI {
     chatUI.uiToolModeSelector.onchange = () => {
       chatUI.toolMode = chatUI.uiToolModeSelector.value as ToolMode;
       chatUI.determinedMode = null; // Reset when manually changed
+      chatUI.saveSettings();
+    };
+    chatUI.uiContextSizeSelector.onchange = () => {
+      chatUI.contextSize = parseInt(chatUI.uiContextSizeSelector.value, 10);
+      chatUI.saveSettings();
     };
     // Populate model selector
     const modelSelector = getElementAndCheck(
@@ -270,15 +329,70 @@ class ChatUI {
       const opt = document.createElement("option");
       opt.value = item.model_id;
       opt.innerHTML = item.model_id;
-      if (i === 0) opt.selected = true;
       modelSelector.appendChild(opt);
     }
-    chatUI.selectedModel = modelSelector.value;
+    // Set selected model from settings or default to first
+    if (chatUI.selectedModel) {
+      modelSelector.value = chatUI.selectedModel;
+    } else {
+      chatUI.selectedModel = modelSelector.value;
+    }
     modelSelector.onchange = () => {
       chatUI.onSelectChange(modelSelector);
     };
+    // Populate context size selector
+    for (const size of ChatUI.CONTEXT_SIZE_OPTIONS) {
+      const opt = document.createElement("option");
+      opt.value = size.toString();
+      opt.innerHTML = `${size} tokens`;
+      if (size === chatUI.contextSize) opt.selected = true;
+      chatUI.uiContextSizeSelector.appendChild(opt);
+    }
     return chatUI;
   };
+
+  private loadSettings() {
+    const saved = localStorage.getItem("webllm-chat-settings");
+    if (saved) {
+      try {
+        const settings = JSON.parse(saved);
+        this.selectedModel = settings.selectedModel || "";
+        this.contextSize = settings.contextSize || 4096;
+        this.toolMode = settings.toolMode || "auto";
+        this.determinedMode = settings.determinedMode || null;
+      } catch (e) {
+        console.warn("Failed to load settings:", e);
+        this.selectedModel = "";
+        this.contextSize = 4096;
+        this.toolMode = "auto";
+      }
+    } else {
+      this.selectedModel = "";
+      this.contextSize = 4096;
+      this.toolMode = "auto";
+    }
+    // Update UI to reflect loaded settings
+    if (this.uiToolModeSelector) {
+      this.uiToolModeSelector.value = this.toolMode;
+      // Restore the detected mode text if in auto mode
+      if (this.toolMode === "auto" && this.determinedMode) {
+        const autoOption = this.uiToolModeSelector.querySelector("option[value='auto']");
+        if (autoOption) {
+          autoOption.textContent = `Auto ✓ (${this.determinedMode === "openai" ? "OpenAI" : "Structural"} detected)`;
+        }
+      }
+    }
+  }
+
+  private saveSettings() {
+    const settings = {
+      selectedModel: this.selectedModel,
+      contextSize: this.contextSize,
+      toolMode: this.toolMode,
+      determinedMode: this.determinedMode,
+    };
+    localStorage.setItem("webllm-chat-settings", JSON.stringify(settings));
+  }
 
   private pushTask(task: () => Promise<void>) {
     const lastEvent = this.chatRequestChain;
@@ -297,6 +411,7 @@ class ChatUI {
       this.resetChatHistory();
       await this.unloadChat();
       this.selectedModel = modelSelector.value;
+      this.saveSettings();
       this.determinedMode = null; // Reset mode preference when model changes
       // Reset dropdown text
       const autoOption = this.uiToolModeSelector.querySelector("option[value='auto']");
@@ -380,7 +495,7 @@ class ChatUI {
     };
     this.engine.setInitProgressCallback(initProgressCallback);
     try {
-      await this.engine.reload(this.selectedModel);
+      await this.engine.reload(this.selectedModel, { context_size: this.contextSize });
     } catch (err) {
       this.appendMessage("error", "Init error: " + (err as Error).toString());
       this.requestInProgress = false;
@@ -396,20 +511,119 @@ class ChatUI {
   }
 
   // ============================================================================
+  // Slash Command Support
+  // ============================================================================
+
+  private async runSlashCommand(command: string) {
+    const trimmed = command.trim();
+    const parts = trimmed.slice(1).split(/\s+/);
+    const cmdName = parts[0]?.toLowerCase() || "";
+    const cmdArgs = parts.slice(1);
+
+    this.uiChatInput.value = "";
+
+    // Map slash commands to tool calls
+    if (cmdName === "time" || cmdName === "get_time") {
+      this.appendUserMessage(trimmed);
+      this.chatHistory.push({ role: "user", content: trimmed });
+      const toolCall = { name: "get_time", arguments: {} };
+      if (cmdArgs.length > 0) {
+        toolCall.arguments = { timezone: cmdArgs[0] };
+      }
+      await this.executeToolCommand(toolCall);
+    } else if (cmdName === "location" || cmdName === "get_location" || cmdName === "where") {
+      this.appendUserMessage(trimmed);
+      this.chatHistory.push({ role: "user", content: trimmed });
+      await this.executeToolCommand({ name: "get_location", arguments: {} });
+    } else if (cmdName === "help" || cmdName === "?") {
+      this.appendUserMessage(trimmed);
+      this.appendMessage("left", 
+        "Available commands:\n" +
+        "/time [timezone] - Get current time\n" +
+        "/location - Get your current location\n" +
+        "/help - Show this help message\n" +
+        "/new - Start a new conversation (clears chat history)\n" +
+        "/clear - Same as /new\n" +
+        "/dump - Dump conversation track (shows chat history, model, settings)"
+      );
+    } else if (cmdName === "new" || cmdName === "clear") {
+      // Reset chat - same as clicking reset button (don't append user message since we're clearing)
+      if (this.requestInProgress) this.engine.interruptGenerate();
+      this.pushTask(async () => {
+        await this.engine.resetChat();
+        this.resetChatHistory();
+        this.determinedMode = null;
+        const autoOption = this.uiToolModeSelector.querySelector("option[value='auto']");
+        if (autoOption) autoOption.textContent = "Auto (Try OpenAI → Fallback to Structural)";
+      });
+    } else if (cmdName === "dump") {
+      this.appendUserMessage(trimmed);
+      // Dump conversation track
+      const dump = {
+        chatHistory: this.chatHistory,
+        model: this.selectedModel,
+        contextSize: this.contextSize,
+        toolMode: this.toolMode,
+        determinedMode: this.determinedMode,
+      };
+      this.appendMessage("left", "Conversation dump:\n```\n" + JSON.stringify(dump, null, 2) + "\n```");
+    } else {
+      this.appendUserMessage(trimmed);
+      this.appendMessage("error", `Unknown command: /${cmdName}\nType /help for available commands.`);
+    }
+  }
+
+  private async executeToolCommand(toolCall: { name: string; arguments: Record<string, unknown> }) {
+    try {
+      const result = await runTool(toolCall);
+      this.appendMessage("tool-result", `Tool ${toolCall.name}: ${JSON.stringify(result)}`);
+      // Display result naturally and add to chat history
+      if (toolCall.name === "get_time") {
+        const date = result.date as string;
+        const time = result.time as string;
+        const response = `The current time is ${date} ${time}.`;
+        this.appendMessage("left", response);
+        this.chatHistory.push({ role: "assistant", content: response });
+      } else if (toolCall.name === "get_location") {
+        const city = result.city as string;
+        const country = result.country as string;
+        if (city || country) {
+          const response = `You are in ${city}, ${country}.`;
+          this.appendMessage("left", response);
+          this.chatHistory.push({ role: "assistant", content: response });
+        } else {
+          const response = JSON.stringify(result);
+          this.appendMessage("left", response);
+          this.chatHistory.push({ role: "assistant", content: response });
+        }
+      }
+    } catch (error) {
+      this.appendMessage("error", `Command error: ${(error as Error).message}`);
+    }
+  }
+
+  // ============================================================================
   // Tool Calling Logic
   // ============================================================================
 
   private async asyncGenerate() {
-    await this.asyncInitChat();
-    this.requestInProgress = true;
-    const prompt = this.uiChatInput.value;
+    const prompt = this.uiChatInput.value.trim();
     if (prompt === "") {
-      this.requestInProgress = false;
       return;
     }
+    
+    // Check for slash commands (direct tool invocation)
+    if (prompt.startsWith("/")) {
+      await this.runSlashCommand(prompt);
+      return;
+    }
+    
+    await this.asyncInitChat();
+    this.requestInProgress = true;
     this.appendUserMessage(prompt);
     this.uiChatInput.value = "";
     this.uiChatInput.setAttribute("placeholder", "Generating...");
+    // Create empty message bubble for streaming response to update
     this.appendMessage("left", "");
     try {
       let finalMessage = "";
@@ -462,7 +676,6 @@ class ChatUI {
     finalMessage: string;
     usage?: webllm.CompletionUsage;
   }> {
-    this.chatHistory = this.chatHistory.slice(0, 1);
     this.chatHistory.push({ role: "user", content: prompt });
     const openaiTools: webllm.ChatCompletionTool[] = tools.map((t) => ({
       type: "function",
@@ -492,25 +705,33 @@ class ChatUI {
     const toolCalls = lastChunk?.choices[0]?.delta?.tool_calls;
     let finalMessage = curMessage;
     if (toolCalls && toolCalls.length > 0) {
-      for (const toolCall of toolCalls) {
-        if (toolCall.type === "function") {
-          const args = JSON.parse(toolCall.function.arguments);
-          const result = await runTool({ name: toolCall.function.name, arguments: args });
-          this.appendMessage(
-            "tool-result",
-            `Tool ${toolCall.function.name} result: ${JSON.stringify(result)}`,
-          );
-          this.chatHistory.push({
-            role: "assistant",
-            content: curMessage,
-            tool_calls: [toolCall],
-          } as webllm.ChatCompletionMessageParam);
-          this.chatHistory.push({
-            role: "tool",
-            tool_call_id: toolCall.id,
-            content: JSON.stringify(result),
-          });
-        }
+      // Execute all tools in parallel for efficiency
+      const toolResults = await Promise.all(toolCalls.map(async (toolCall) => {
+        if (toolCall.type !== "function") return null;
+        const args = JSON.parse(toolCall.function.arguments);
+        const result = await runTool({ name: toolCall.function.name, arguments: args });
+        this.appendMessage(
+          "tool-result",
+          `Tool ${toolCall.function.name} result: ${JSON.stringify(result)}`,
+        );
+        return { toolCall, result };
+      }));
+      
+      // Add assistant message (once) with all tool calls
+      // Note: When tool calls are present, we clear the text content to avoid hallucinated text being shown
+      this.chatHistory.push({
+        role: "assistant",
+        content: "",
+        tool_calls: toolCalls,
+      } as webllm.ChatCompletionMessageParam);
+      
+      // Add all tool results to chat history
+      for (const { toolCall, result } of toolResults.filter((r): r is NonNullable<typeof r> => r !== null)) {
+        this.chatHistory.push({
+          role: "tool",
+          tool_call_id: toolCall.id,
+          content: JSON.stringify(result),
+        });
       }
       const finalCompletion = await this.engine.chat.completions.create({
         stream: false,
@@ -531,64 +752,102 @@ class ChatUI {
     const systemPrompt =
       "You are a helpful assistant with access to tools. " +
       "You MUST call the tools to get actual data - do NOT make up fake results. " +
-      "Use the provided tools by emitting  tool_call blocks (one or more) when needed. " +
-      'Each  tool_call should contain a JSON body {"name": "...", "arguments": {...}}. ' +
+      "When you need to use a tool, emit ONLY the tool call block in this exact format: " +
+      "\n<tool_call>\n{\"name\": \"get_time\", \"arguments\": {}}\n<\/tool_call>\n" +
+      "Replace the values with appropriate tool name and arguments. " +
+      "For get_time, only specify timezone if user asks for a specific location.\n" +
       "After receiving tool responses, provide a natural language answer incorporating the results. " +
+      "Tool results will be JSON objects like {\"success\": true, \"date\": \"Sun, May 17, 2026\", \"time\": \"02:11:06 PM\"} - extract the 'time' field to answer the user. " +
       "Available tools: " +
-      JSON.stringify(tools.map((t) => ({ name: t.name, description: t.description })));
-    const messages: webllm.ChatCompletionMessageParam[] = [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: prompt },
-    ];
+      JSON.stringify(tools.map((t) => ({ name: t.name, description: t.description, schema: t.schema })));
+    
+    // Check if we need to add system prompt (only if chatHistory is empty or doesn't have system)
+    if (this.chatHistory.length === 0 || this.chatHistory[0].role !== "system") {
+      this.chatHistory.unshift({ role: "system", content: systemPrompt });
+    }
+    
+    // Add user message to chat history
+    this.chatHistory.push({ role: "user", content: prompt });
+    
     const responseFormat: webllm.ResponseFormat = {
       type: "structural_tag",
       structural_tag: mcpStructuralTag,
     };
     const toolCallReply = await this.engine.chat.completions.create({
       stream: false,
-      messages,
+      messages: this.chatHistory,
       max_tokens: 1024,
       response_format: responseFormat,
     });
     const toolCallContent = toolCallReply.choices[0].message.content || "";
-    this.appendMessage("left", "Tool calls generated...");
-    const parsedCalls = parseToolCallBlocks(toolCallContent);
+    this.updateLastMessage("left", "Tool calls generated...");
+    
+    let finalMessage = "";
+    let usage = toolCallReply.usage;
+    
+    // Try to parse tool calls - if none found, just show the response
+    let parsedCalls: Array<{ name: string; arguments: Record<string, unknown> }>;
+    try {
+      parsedCalls = parseToolCallBlocks(toolCallContent);
+    } catch (e) {
+      // No valid tool calls found - just show the raw response
+      this.updateLastMessage("left", toolCallContent || "(no response)");
+      this.chatHistory.push({ role: "assistant", content: toolCallContent });
+      return { finalMessage: toolCallContent, usage };
+    }
+    
     const toolCalls = parsedCalls.map((call, idx) => ({
       id: `call-${idx + 1}`,
       call,
     }));
-    messages.push({
+    
+    // Update message to show what tool was generated
+    const toolInfo = toolCalls.map(({ call }) => `${call.name}(${JSON.stringify(call.arguments)})`).join(", ");
+    this.updateLastMessage("left", `Calling tool(s): ${toolInfo}`);
+    
+    // Push assistant message with tool calls to chat history
+    // Note: When tool calls are present, we clear the text content to avoid hallucinated text being shown
+    this.chatHistory.push({
       role: "assistant",
-      content: toolCallContent,
+      content: "",
       tool_calls: toolCalls.map(({ id, call }) => ({
         id,
         type: "function",
         function: { name: call.name, arguments: JSON.stringify(call.arguments) },
       })),
     } as webllm.ChatCompletionMessageParam);
-    for (const { id, call } of toolCalls) {
-      const toolResult = await runTool(call);
+    
+    // Execute all tools in parallel
+    const toolResults = await Promise.all(toolCalls.map(async ({ id, call }) => {
+      const result = await runTool(call);
       this.appendMessage(
         "tool-result",
-        `Tool ${call.name}: ${JSON.stringify(toolResult)}`,
+        `Tool ${call.name}: ${JSON.stringify(result)}`,
       );
-      messages.push({
+      return { id, result };
+    }));
+    
+    // Add tool results to chat history
+    for (const { id, result } of toolResults) {
+      this.chatHistory.push({
         role: "tool",
         tool_call_id: id,
-        content: JSON.stringify(toolResult),
+        content: JSON.stringify(result),
       });
     }
-    messages.push({
-      role: "user",
-      content: "Using ONLY the tool results provided above, summarize the current time and location in a natural response.",
-    });
+    
+    // Continue conversation with tool results - let model naturally respond
     const finalReply = await this.engine.chat.completions.create({
       stream: false,
-      messages,
+      messages: this.chatHistory,
       max_tokens: 256,
     });
-    const finalMessage = finalReply.choices[0].message.content || "";
+    finalMessage = finalReply.choices[0].message.content || "";
     this.updateLastMessage("left", finalMessage);
+    
+    // Add final assistant message to chat history
+    this.chatHistory.push({ role: "assistant", content: finalMessage });
+    
     return { finalMessage, usage: finalReply.usage };
   }
 }

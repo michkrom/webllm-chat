@@ -65,14 +65,20 @@ inv clean       # Remove build artifacts
 
 ## Built-in Tools
 
-### `get_location`
-Uses the browser's Geolocation API to get your current city/country:
-- Returns `city`, `country`, `display_name`
-
-### `get_time`
+### `/time [timezone]`
 Returns the current date and time:
 - Returns `date`, `time`
 - Defaults to your browser's detected timezone
+
+### `/location`
+Uses the browser's Geolocation API to get your current city/country:
+- Returns `city`, `country`, `display_name`
+
+### `/new` / `/clear`
+Starts a new conversation, clearing the chat history and resetting the tool mode detection.
+
+### `/dump`
+Dumps the current conversation state including chat history, model settings, and tool mode information for debugging.
 
 ## Tool Calling Modes Explained
 
