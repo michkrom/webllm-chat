@@ -476,6 +476,38 @@ class ChatUI {
     this.uiChat.scrollTo(0, this.uiChat.scrollHeight);
   }
 
+  // Insert a message before the last message (useful for tool results before reply bubble)
+  private insertBeforeLastMessage(kind: string, text: string) {
+    const matches = this.uiChat.getElementsByClassName(`msg ${kind}-msg`);
+    let insertBefore: Element | null = null;
+    
+    if (matches.length > 0) {
+      // Find the last message element that has a msg-bubble
+      for (let i = matches.length - 1; i >= 0; i--) {
+        const msg = matches[i];
+        if (msg.getElementsByClassName("msg-bubble").length > 0) {
+          insertBefore = msg;
+          break;
+        }
+      }
+    }
+    
+    const msg = `
+      <div class="msg ${kind}-msg">
+        <div class="msg-bubble">
+          <div class="msg-text">${this.escapeHtml(text)}</div>
+        </div>
+      </div>
+    `;
+    
+    if (insertBefore) {
+      insertBefore.insertAdjacentHTML("beforebegin", msg);
+    } else {
+      this.uiChat.insertAdjacentHTML("beforeend", msg);
+    }
+    this.uiChat.scrollTo(0, this.uiChat.scrollHeight);
+  }
+
   private resetChatHistory() {
     this.chatHistory = [];
     const clearTags = ["left", "right", "init", "error", "tool-result"];
@@ -641,13 +673,13 @@ class ChatUI {
         // Auto mode - try OpenAI first, fall back to structural
         try {
           ({ finalMessage, usage } = await this.runOpenAIToolCalling(prompt));
-          this.appendMessage("init", "(Used OpenAI-style tool calling)");
+          this.insertBeforeLastMessage("init", "(Used OpenAI-style tool calling)");
           this.determinedMode = "openai";
           // Update dropdown to show detected mode
           this.uiToolModeSelector.querySelector("option[value='auto']")!.textContent = 
             "Auto ✓ (OpenAI detected)";
         } catch (openaiError) {
-          this.appendMessage(
+          this.insertBeforeLastMessage(
             "init",
             `(OpenAI tool calling failed, falling back to structural tag mode)`,
           );
@@ -710,7 +742,7 @@ class ChatUI {
         if (toolCall.type !== "function") return null;
         const args = JSON.parse(toolCall.function.arguments);
         const result = await runTool({ name: toolCall.function.name, arguments: args });
-        this.appendMessage(
+        this.insertBeforeLastMessage(
           "tool-result",
           `Tool ${toolCall.function.name} result: ${JSON.stringify(result)}`,
         );
@@ -820,7 +852,7 @@ class ChatUI {
     // Execute all tools in parallel
     const toolResults = await Promise.all(toolCalls.map(async ({ id, call }) => {
       const result = await runTool(call);
-      this.appendMessage(
+      this.insertBeforeLastMessage(
         "tool-result",
         `Tool ${call.name}: ${JSON.stringify(result)}`,
       );
